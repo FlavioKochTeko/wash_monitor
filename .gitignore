@@ -1,0 +1,5 @@
+.env
+venv/
+__pycache__/
+*.csv
+!example_profile.csv
