@@ -1,60 +1,59 @@
-import requests  # Kommunikation mit HA über HTTP
-import time  # damit machen wir pausen
-from datetime import datetime  # für den Zeitstempel
-from dotenv import load_dotenv
-import os  # zugangsdaten lesen von der .env Datei
+# from get_power import get_power
 
-load_dotenv()
+from fake_sensor import FakeSensor  # Zum Testen mit einer CSV-Datei
+from state_maschine import state_machine
+from phase_detect import detect_phase
+from learning_mode import LearningMode
+from program_detect import detect_program
+from datetime import datetime
+import time
 
-# IP und Token Geheimhalten!!!
+sensor = FakeSensor(
+    "wash_monitor/Wash_data/60°wash(bett)_20260307-1348.csv"
+)  # Zum Testen mit einer CSV-Datei
 
-HA_URL = os.getenv("HA_URL")
-# IP meiner HA wird von der .env Datei importiert
+learning_mode = LearningMode()
+# learning_mode.start_learning()
 
-TOKEN = os.getenv("TOKEN")
-# dauerhafter Zugangsschlüssel wird von der .env Datei importiert
-
-# damit sind wir berechtigt auf die Daten zuzugreifen
-headers = {
-    "Authorization": f"Bearer {TOKEN}",  # Authorization: sagt HA "Bin Berechtigt" / Bearer: ist Standard Format für API-Aut
-    "Content-Type": "application/json",  # mit welcher Datei wir arbeiten (JSON)
-}
-
-
-def get_power():
-    url = f"{HA_URL}/api/states/sensor.mystrom_device_leistung"  # Das ist der API Endpunkt für meinen Sensor
-    response = requests.get(
-        url, headers=headers
-    )  # fragt nach dem aktuellen Zustand des Sensors
-    response.raise_for_status()  # Überprüft Fehler (Token, Sensor, HA Offline)
-    data = response.json()  # HA antwortet mit JSON so lesen wir es
-    return float(data["state"])  # so wandeln wir state im JSON file in eine Zahl um
-
-
-filename = f"wash_{datetime.now().strftime('%Y%m%d-%H%M')}.csv"  # Dateiname
-
-with open(filename, "w") as f:  # Datei öffnen und schliessen
-    f.write(
-        "Datum      Zeit    ; Leistung\n"
-    )  # kopfzeile erstellen \n ist zeilenumbruch
+state = "IDLE"
+start_time = None
+low_power_start = None
+phase_sequence = []
+last_phase = None
 
 try:
     while True:
-        power = get_power()
+        power = sensor.read()  # = sensor.read()  # = get_power()
         timestamp = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
 
-        with open(filename, "a") as f:
-            f.write(f"{timestamp}; {power}\n")
+        if (
+            power is None
+        ):  # dieser if block löschen, wenn die get_power Funktion implementiert ist.
+            print("Simulation fertig")
+            break
 
-        print(f"{timestamp} - {power} W")  # Ausgabe akuelle Leistung
+        state, start_time, low_power_start = state_machine(
+            power, state, start_time, low_power_start
+        )
+        phase = detect_phase(power)
+
+        if phase != last_phase:
+            phase_sequence.append((phase, time.time()))
+            last_phase = phase
+
+        print(f"{timestamp} - Power: {power} W, State: {state}, Phase: {phase}")
+
+        learning_mode.record_phase(phase)
+
+        if len(phase_sequence) >= 2:
+            program = detect_program(phase_sequence)
+
+            if program:
+                print("Erkanntes Programm:", program["name"])
+
+        if state == "FINISHED":
+            learning_mode.stop_learning()
+
         time.sleep(5)
 except KeyboardInterrupt:
     print("\nAufzeichnung beendet.")
-
-
-#   *INFO*
-# print(f".....")       = Variable direkt in den Text einfügen
-# .raise_for_status()   = kommt von import request
-# Exception             = sind alle Fehler gemeint (ValueError, TypeError, HTTPError,...)
-# with                  = öffne etwas und räume automatisch wieder auf = datei öffnet und schliesst sich wieder
-# \n                    = erstellt einen zeilenumbruch
