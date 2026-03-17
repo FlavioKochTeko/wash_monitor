@@ -8,12 +8,21 @@ LOW_POWER = "LOW_POWER"
 
 power_threshold = 1
 
-state = IDLE
-start_time = None
-low_power_start = None
 
+def state_machine(
+    power: float, state: str, start_time: datetime, low_power_start: datetime
+) -> tuple:
+    """Verwaltet den Zustand der Waschmaschine basierend auf dem Stromverbrauch.
 
-def state_machine(power, state, start_time, low_power_start):
+    Args:
+        power: Aktueller Stromverbrauch in Watt
+        state: Aktueller Zustand (IDLE. RUNNING, LOW_POWER, FINISHED).
+        start_time: Startzeitpunkt des Waschvorgangs.
+        low_power_start: Zeitpunkt seit dem die Leistung niedrig ist.
+
+    Returns:
+        Tuple mit (state, start_time, low_power_start).
+    """
 
     if state == IDLE and power > power_threshold:
         state = RUNNING
@@ -30,14 +39,14 @@ def state_machine(power, state, start_time, low_power_start):
             low_power_start = None
 
         elif low_power_start and datetime.now() - low_power_start > timedelta(
-            seconds=70  # =5
+            seconds=5  # Fake Sensor: 5s - produktiv: 70s
         ):
             state = FINISHED
             print("Waschmaschine ist fertig")
 
-        elif state == FINISHED and power < power_threshold:
-            state = IDLE
-            start_time = None
-            low_power_start = None
-            print("Reset")
+    elif state == FINISHED and power < power_threshold:
+        state = IDLE
+        start_time = None
+        low_power_start = None
+        print("Reset")
     return state, start_time, low_power_start
